@@ -3,20 +3,8 @@ import re
 import numpy as np
 import verifiers as vf
 from datasets import Dataset
-from openai import AsyncOpenAI
 from verifiers.envs.multiturn_env import MultiTurnEnv
-from verifiers.types import (
-    Messages,
-    ModelResponse,
-    RolloutInput,
-    SamplingArgs,
-    State,
-    TrajectoryStep,
-)
-from verifiers.utils.response_utils import (
-    parse_response_messages,
-    parse_response_tokens,
-)
+from verifiers.types import Messages, State
 
 SYSTEM_PROMPT = """
 You are playing Hanabi, a cooperative card game where players work together to build fireworks.
@@ -130,8 +118,6 @@ class HanabiEnv(MultiTurnEnv):
         self.num_train_examples = num_train_examples
         self.num_eval_examples = num_eval_examples
         self.num_players = num_players
-        self._client = None
-        self._model = None
 
         dataset_rows = []
         for i in range(num_train_examples):
@@ -147,59 +133,6 @@ class HanabiEnv(MultiTurnEnv):
             system_prompt=SYSTEM_PROMPT.format(player_id=0),
             **kwargs,
         )
-
-        self._current_client = None
-        self._current_model = None
-        self._current_sampling_args = None
-
-    async def rollout(
-        self,
-        input: RolloutInput,
-        client: AsyncOpenAI,
-        model: str,
-        sampling_args: SamplingArgs | None = None,
-    ) -> State:
-        """Override rollout to capture client, model, and sampling_args for other players.
-        TODO: this override will not be needed in future verifiers releases. update soon.
-        """
-        self._current_client = client
-        self._current_model = model
-        self._current_sampling_args = sampling_args
-        state = await super().rollout(input, client, model, sampling_args)
-        return state
-
-    async def add_model_response(
-        self,
-        state: State,
-        prompt_messages: Messages,
-        response: ModelResponse,
-        extras: dict | None = None,
-    ):
-        """Override to support adding extras to trajectory steps.
-        TODO: send a PR to verifiers to add this functionality upstream.
-        """
-        if extras is None:
-            extras = {}
-
-        if response is not None and response.id == "overlong-prompt":
-            state["prompt_too_long"] = True
-
-        completion_messages = await parse_response_messages(response, self.message_type)
-        tokens = await parse_response_tokens(
-            response, self.message_type, self.max_seq_len
-        )
-
-        trajectory_step = TrajectoryStep(
-            prompt=prompt_messages,
-            completion=completion_messages,
-            response=response,
-            tokens=tokens,
-            reward=None,
-            advantage=None,
-            is_truncated=False,
-            extras=extras,
-        )
-        state["trajectory"].append(trajectory_step)
 
     async def setup_state(self, state: State) -> State:
         """Initialize environment-specific game state."""
@@ -290,16 +223,9 @@ class HanabiEnv(MultiTurnEnv):
             )
 
             # get player's response
-            # TODO: we won't need to store client/model in newer releases. check soon. sampling args might still be needed tho
-            assert self._current_client is not None, "Client not initialized"
-            assert self._current_model is not None, "Model not initialized"
-
             response = await self.get_model_response(
                 state,
                 player_messages,
-                client=self._current_client,
-                model=self._current_model,
-                sampling_args=self._current_sampling_args,
                 message_type=self.message_type,
             )
 
@@ -321,7 +247,6 @@ class HanabiEnv(MultiTurnEnv):
                         :-1
                     ],  # prompt is everything before the assistant response
                     response,
-                    extras={"player_id": player_id},
                 )
 
                 # set current player
