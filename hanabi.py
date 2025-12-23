@@ -196,6 +196,7 @@ class HanabiEnv(MultiTurnEnv):
             tokens=tokens,
             reward=None,
             advantage=None,
+            is_truncated=False,
             extras=extras,
         )
         state["trajectory"].append(trajectory_step)
