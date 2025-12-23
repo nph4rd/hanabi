@@ -294,9 +294,10 @@ class HanabiEnv(MultiTurnEnv):
             assert self._current_model is not None, "Model not initialized"
 
             response = await self.get_model_response(
-                self._current_client,
-                self._current_model,
+                state,
                 player_messages,
+                client=self._current_client,
+                model=self._current_model,
                 sampling_args=self._current_sampling_args,
                 message_type=self.message_type,
             )

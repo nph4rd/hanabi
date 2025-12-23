@@ -5,9 +5,12 @@ tags = ["multi-agent"]
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "verifiers==0.1.8.post1",
+    "verifiers>=0.1.8",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+verifiers = { git = "https://github.com/PrimeIntellect-ai/verifiers.git", rev = "cdbc417" }
