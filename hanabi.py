@@ -1,10 +1,15 @@
+import random
 import re
 
 import numpy as np
 import verifiers as vf
 from datasets import Dataset
 from verifiers.envs.multiturn_env import MultiTurnEnv
-from verifiers.types import Messages, State
+from verifiers.types import Messages, State, TrajectoryStep
+from verifiers.utils.response_utils import (
+    parse_response_messages,
+    parse_response_tokens,
+)
 
 SYSTEM_PROMPT = """
 You are playing Hanabi, a cooperative card game where players work together to build fireworks.
@@ -222,17 +227,19 @@ class HanabiEnv(MultiTurnEnv):
                 }
             )
 
-            # get player's response
-            response = await self.get_model_response(
-                state,
-                player_messages,
-                message_type=self.message_type,
+            # get player's response via direct client call (sub-agent pattern)
+            client = state["client"]
+            model = state["model"]
+            sampling_args = state.get("sampling_args") or {}
+            response = await client.chat.completions.create(
+                model=model,
+                messages=player_messages,
+                **sampling_args,
             )
 
             if response and hasattr(response, "choices") and response.choices:
                 choice = response.choices[0]
-                assert hasattr(choice, "message")
-                player_response_text = choice.__getattribute__("message").content
+                player_response_text = choice.message.content
                 player_action = self.parser.parse_answer(player_response_text)
 
                 # append response text to player's messages
@@ -240,14 +247,24 @@ class HanabiEnv(MultiTurnEnv):
                     {"role": "assistant", "content": player_response_text}
                 )
 
-                # record trajectory for this player
-                await self.add_model_response(
-                    state,
-                    player_messages[
-                        :-1
-                    ],  # prompt is everything before the assistant response
-                    response,
+                # record trajectory for this player (manual construction per RLMEnv pattern)
+                completion_messages = await parse_response_messages(
+                    response, self.message_type
                 )
+                tokens = await parse_response_tokens(
+                    response, self.message_type, self.max_seq_len
+                )
+                trajectory_step = TrajectoryStep(
+                    prompt=player_messages[:-1],
+                    completion=completion_messages,
+                    response=response,
+                    tokens=tokens,
+                    reward=None,
+                    advantage=None,
+                    is_truncated=False,
+                    extras={"player_id": player_id},
+                )
+                state["trajectory"].append(trajectory_step)
 
                 # set current player
                 state["current_player"] = player_id
@@ -295,7 +312,6 @@ class HanabiEnv(MultiTurnEnv):
 
     def _initialize_game_state(self, seed: int | None = None) -> dict:
         """Initialize a new Hanabi game state."""
-        import random
 
         # add seed for reproducibility
         if seed is not None:
