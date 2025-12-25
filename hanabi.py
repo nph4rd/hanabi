@@ -161,6 +161,20 @@ class HanabiEnv(MultiTurnEnv):
         """Check if the game is over."""
         return state.get("is_complete", False)
 
+    def _is_hand_empty(self, state: State, player_idx: int) -> bool:
+        """Check if a player's hand is completely empty."""
+        for card_idx in range(state["player_hands"].shape[1]):
+            if np.sum(state["player_hands"][player_idx, card_idx]) > 0:
+                return False
+        return True
+
+    def _all_hands_empty(self, state: State) -> bool:
+        """Check if all players have empty hands."""
+        for player_idx in range(state["player_hands"].shape[0]):
+            if not self._is_hand_empty(state, player_idx):
+                return False
+        return True
+
     async def env_response(
         self, messages: Messages, state: State, **kwargs
     ) -> Messages:
@@ -194,6 +208,10 @@ class HanabiEnv(MultiTurnEnv):
 
         # process other players
         for player_id in range(1, self.num_players):
+            # skip players with empty hands (deck exhausted, no cards left)
+            if self._is_hand_empty(state, player_id):
+                continue
+
             player_messages = state["player_messages"][player_id]
 
             # each player should see all feedback since they last played (previous and current turn)
@@ -293,6 +311,15 @@ class HanabiEnv(MultiTurnEnv):
 
         # reset previous turn feedback
         state["previous_turn_feedback"] = current_turn_feedbacks
+
+        # check if game ends due to all hands being empty (deck exhausted)
+        if self._all_hands_empty(state):
+            state["is_complete"] = True
+            combined_feedback = "\n".join(current_turn_feedbacks)
+            combined_feedback += (
+                f"\n\nGame Over - All cards played.\n<score>{state['score']}</score>"
+            )
+            return [{"role": "user", "content": combined_feedback}]
 
         # increment turn count
         state["turn_count"] += 1
