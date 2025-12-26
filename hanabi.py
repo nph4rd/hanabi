@@ -245,7 +245,7 @@ class HanabiEnv(MultiTurnEnv):
                 }
             )
 
-            # get player's response via direct client call (sub-agent pattern)
+            # get player's response via direct client call
             client = state["client"]
             model = state["model"]
             sampling_args = state.get("sampling_args") or {}
@@ -265,7 +265,7 @@ class HanabiEnv(MultiTurnEnv):
                     {"role": "assistant", "content": player_response_text}
                 )
 
-                # record trajectory for this player (manual construction per RLMEnv pattern)
+                # record trajectory for this player
                 completion_messages = await parse_response_messages(
                     response, self.message_type
                 )
