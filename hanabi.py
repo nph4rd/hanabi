@@ -203,6 +203,14 @@ class HanabiEnv(MultiTurnEnv):
             state["is_complete"] = True
             return [{"role": "user", "content": feedback}]
 
+        # check if final round ends after this player's turn
+        if state.get("final_round_turns") is not None:
+            state["final_round_turns"] -= 1
+            if state["final_round_turns"] <= 0:
+                state["is_complete"] = True
+                feedback += f"\n\nGame Over - Final round complete.\n<score>{state['score']}</score>"
+                return [{"role": "user", "content": feedback}]
+
         # track turn feedbacks
         current_turn_feedbacks = [feedback]
 
@@ -210,6 +218,14 @@ class HanabiEnv(MultiTurnEnv):
         for player_id in range(1, self.num_players):
             # skip players with empty hands (deck exhausted, no cards left)
             if self._is_hand_empty(state, player_id):
+                # still count their turn in the final round
+                if state.get("final_round_turns") is not None:
+                    state["final_round_turns"] -= 1
+                    if state["final_round_turns"] <= 0:
+                        state["is_complete"] = True
+                        combined_feedback = "\n".join(current_turn_feedbacks)
+                        combined_feedback += f"\n\nGame Over - Final round complete.\n<score>{state['score']}</score>"
+                        return [{"role": "user", "content": combined_feedback}]
                 continue
 
             player_messages = state["player_messages"][player_id]
@@ -309,10 +325,19 @@ class HanabiEnv(MultiTurnEnv):
                     combined_feedback = "\n".join(current_turn_feedbacks)
                     return [{"role": "user", "content": combined_feedback}]
 
+                # check if final round ends after this player's turn
+                if state.get("final_round_turns") is not None:
+                    state["final_round_turns"] -= 1
+                    if state["final_round_turns"] <= 0:
+                        state["is_complete"] = True
+                        combined_feedback = "\n".join(current_turn_feedbacks)
+                        combined_feedback += f"\n\nGame Over - Final round complete.\n<score>{state['score']}</score>"
+                        return [{"role": "user", "content": combined_feedback}]
+
         # reset previous turn feedback
         state["previous_turn_feedback"] = current_turn_feedbacks
 
-        # check if game ends due to all hands being empty (deck exhausted)
+        # fallback: check if game ends due to all hands being empty
         if self._all_hands_empty(state):
             state["is_complete"] = True
             combined_feedback = "\n".join(current_turn_feedbacks)
@@ -407,6 +432,7 @@ class HanabiEnv(MultiTurnEnv):
             "num_cards_dealt": deck_idx,
             "num_cards_discarded": 0,
             "score": 0,
+            "final_round_turns": None, # set to num_players when deck exhausts
         }
 
         return state
@@ -500,6 +526,11 @@ class HanabiEnv(MultiTurnEnv):
         lines.append("</game_state>")
 
         return "\n".join(lines)
+
+    def _check_deck_exhausted(self, state: State) -> None:
+        """Check if deck just became exhausted and start final round."""
+        if state.get("final_round_turns") is None and int(np.sum(state["deck"])) == 0:
+            state["final_round_turns"] = self.num_players
 
     def _execute_action(self, state: State, action: str) -> tuple[str, bool]:
         """
@@ -650,8 +681,10 @@ class HanabiEnv(MultiTurnEnv):
                     ]
                     state["deck"][deck_idx] = np.zeros((NUM_COLORS, NUM_RANKS))
                     break
+            # check if deck just became exhausted after drawing
+            self._check_deck_exhausted(state)
         else:
-            #  empty deck, set last position to empty
+            # empty deck, set last position to empty
             state["player_hands"][player, hand_size - 1] = np.zeros(
                 (NUM_COLORS, NUM_RANKS)
             )
@@ -720,6 +753,8 @@ class HanabiEnv(MultiTurnEnv):
                     ]
                     state["deck"][deck_idx] = np.zeros((NUM_COLORS, NUM_RANKS))
                     break
+            # check if deck just became exhausted after drawing
+            self._check_deck_exhausted(state)
         else:
             # empty deck, set last position to empty
             state["player_hands"][player, hand_size - 1] = np.zeros(
