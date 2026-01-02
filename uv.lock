@@ -615,7 +615,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=cdbc417" }]
+requires-dist = [{ name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=eb3bae36c93b2f574e13a39da2908609d4ec4b2f" }]
 
 [[package]]
 name = "hf-xet"
@@ -2133,7 +2133,7 @@ wheels = [
 [[package]]
 name = "verifiers"
 version = "0.1.8.post2"
-source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=cdbc417#cdbc417ad23e66642fa846c5579f9c5002d1bc10" }
+source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=eb3bae36c93b2f574e13a39da2908609d4ec4b2f#eb3bae36c93b2f574e13a39da2908609d4ec4b2f" }
 dependencies = [
     { name = "datasets" },
     { name = "jinja2" },
