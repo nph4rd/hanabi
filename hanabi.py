@@ -211,9 +211,7 @@ class HanabiEnv(MultiTurnEnv):
                 return False
         return True
 
-    async def env_response(
-        self, messages: Messages, state: State, **kwargs
-    ) -> Messages:
+    async def env_response(self, messages: Messages, state: State, **kwargs) -> Messages:
         # parse default player's (p0) action
         assert isinstance(messages, list)
         assert "content" in messages[-1]
@@ -271,9 +269,7 @@ class HanabiEnv(MultiTurnEnv):
             feedback_to_show.extend(
                 state["previous_turn_feedback"][player_id:]
             )  # what happened after they played in previous turn
-            feedback_to_show.extend(
-                current_turn_feedbacks
-            )  # what happened so far in the current turn
+            feedback_to_show.extend(current_turn_feedbacks)  # what happened so far in the current turn
 
             combined_feedback = "\n".join(feedback_to_show)
 
@@ -287,9 +283,7 @@ class HanabiEnv(MultiTurnEnv):
                     }
                 )
 
-            player_observation = self._get_observation(
-                state, player_perspective=player_id
-            )
+            player_observation = self._get_observation(state, player_perspective=player_id)
             player_messages.append(
                 {
                     "role": "user",
@@ -313,17 +307,11 @@ class HanabiEnv(MultiTurnEnv):
                 player_action = self.parser.parse_answer(player_response_text)
 
                 # append response text to player's messages
-                player_messages.append(
-                    {"role": "assistant", "content": player_response_text}
-                )
+                player_messages.append({"role": "assistant", "content": player_response_text})
 
                 # record trajectory for this player
-                completion_messages = await parse_response_messages(
-                    response, self.message_type
-                )
-                tokens = await parse_response_tokens(
-                    response, self.message_type, self.max_seq_len
-                )
+                completion_messages = await parse_response_messages(response, self.message_type)
+                tokens = await parse_response_tokens(response, self.message_type, self.max_seq_len)
                 trajectory_step = TrajectoryStep(
                     prompt=player_messages[:-1],
                     completion=completion_messages,
@@ -348,9 +336,7 @@ class HanabiEnv(MultiTurnEnv):
                         player_feedback += "\n\nGame Over"
                 else:
                     # execute player's action
-                    player_feedback, game_over = self._execute_action(
-                        state, player_action
-                    )
+                    player_feedback, game_over = self._execute_action(state, player_action)
 
                 current_turn_feedbacks.append(player_feedback)
 
@@ -377,9 +363,7 @@ class HanabiEnv(MultiTurnEnv):
         if self._all_hands_empty(state):
             state["is_complete"] = True
             combined_feedback = "\n".join(current_turn_feedbacks)
-            combined_feedback += (
-                f"\n\nGame Over - All cards played.\n<score>{state['score']}</score>"
-            )
+            combined_feedback += f"\n\nGame Over - All cards played.\n<score>{state['score']}</score>"
             return [{"role": "user", "content": combined_feedback}]
 
         # increment turn count
@@ -423,9 +407,7 @@ class HanabiEnv(MultiTurnEnv):
 
         # deal
         hand_size = 5 if self.num_players <= 3 else 4
-        player_hands = np.zeros(
-            (self.num_players, hand_size, NUM_COLORS, NUM_RANKS), dtype=np.float32
-        )
+        player_hands = np.zeros((self.num_players, hand_size, NUM_COLORS, NUM_RANKS), dtype=np.float32)
 
         deck_idx = 0
         for player_idx in range(self.num_players):
@@ -441,17 +423,11 @@ class HanabiEnv(MultiTurnEnv):
         discard_pile = np.zeros((deck_size, NUM_COLORS, NUM_RANKS), dtype=np.float32)
 
         # init card knowledge
-        card_knowledge = np.ones(
-            (self.num_players, hand_size, NUM_COLORS * NUM_RANKS), dtype=np.float32
-        )
+        card_knowledge = np.ones((self.num_players, hand_size, NUM_COLORS * NUM_RANKS), dtype=np.float32)
 
         # track revealed colors and ranks
-        colors_revealed = np.zeros(
-            (self.num_players, hand_size, NUM_COLORS), dtype=np.float32
-        )
-        ranks_revealed = np.zeros(
-            (self.num_players, hand_size, NUM_RANKS), dtype=np.float32
-        )
+        colors_revealed = np.zeros((self.num_players, hand_size, NUM_COLORS), dtype=np.float32)
+        ranks_revealed = np.zeros((self.num_players, hand_size, NUM_RANKS), dtype=np.float32)
 
         state = {
             "deck": deck,
@@ -468,7 +444,7 @@ class HanabiEnv(MultiTurnEnv):
             "num_cards_dealt": deck_idx,
             "num_cards_discarded": 0,
             "score": 0,
-            "final_round_turns": None, # set to num_players when deck exhausts
+            "final_round_turns": None,  # set to num_players when deck exhausts
         }
 
         return state
@@ -521,10 +497,7 @@ class HanabiEnv(MultiTurnEnv):
 
             # check for revealed colors
             for color_idx in range(NUM_COLORS):
-                if (
-                    state["colors_revealed"][player_perspective, card_idx, color_idx]
-                    == 1
-                ):
+                if state["colors_revealed"][player_perspective, card_idx, color_idx] == 1:
                     color_hint = COLORS[color_idx]
                     break
 
@@ -539,9 +512,7 @@ class HanabiEnv(MultiTurnEnv):
             rank_str = rank_hint if rank_hint else "?"
             hand_hints.append(f"{color_str}{rank_str}")
 
-        lines.append(
-            f"<player_{player_perspective}_hand>{' '.join(hand_hints)}</player_{player_perspective}_hand>"
-        )
+        lines.append(f"<player_{player_perspective}_hand>{' '.join(hand_hints)}</player_{player_perspective}_hand>")
 
         # other players' hands
         if state["player_hands"].shape[0] > 1:
@@ -555,9 +526,7 @@ class HanabiEnv(MultiTurnEnv):
                             cards.append(card_to_str(color_idx, rank_idx))
                         else:
                             cards.append("--")
-                    lines.append(
-                        f"<player_{player_idx}_hand>{' '.join(cards)}</player_{player_idx}_hand>"
-                    )
+                    lines.append(f"<player_{player_idx}_hand>{' '.join(cards)}</player_{player_idx}_hand>")
 
         lines.append("</game_state>")
 
@@ -702,9 +671,7 @@ class HanabiEnv(MultiTurnEnv):
         # remove card and shift hand (and hint information)
         for i in range(position, hand_size - 1):
             state["player_hands"][player, i] = state["player_hands"][player, i + 1]
-            state["colors_revealed"][player, i] = state["colors_revealed"][
-                player, i + 1
-            ]
+            state["colors_revealed"][player, i] = state["colors_revealed"][player, i + 1]
             state["ranks_revealed"][player, i] = state["ranks_revealed"][player, i + 1]
 
         # draw new card if deck not empty
@@ -712,18 +679,14 @@ class HanabiEnv(MultiTurnEnv):
         if deck_has_cards:
             for deck_idx in range(state["deck"].shape[0]):
                 if np.sum(state["deck"][deck_idx]) > 0:
-                    state["player_hands"][player, hand_size - 1] = state["deck"][
-                        deck_idx
-                    ]
+                    state["player_hands"][player, hand_size - 1] = state["deck"][deck_idx]
                     state["deck"][deck_idx] = np.zeros((NUM_COLORS, NUM_RANKS))
                     break
             # check if deck just became exhausted after drawing
             self._check_deck_exhausted(state)
         else:
             # empty deck, set last position to empty
-            state["player_hands"][player, hand_size - 1] = np.zeros(
-                (NUM_COLORS, NUM_RANKS)
-            )
+            state["player_hands"][player, hand_size - 1] = np.zeros((NUM_COLORS, NUM_RANKS))
 
         # reset hint information for the new card (either drawn or empty slot)
         state["colors_revealed"][player, hand_size - 1] = np.zeros(NUM_COLORS)
@@ -741,9 +704,7 @@ class HanabiEnv(MultiTurnEnv):
         feedback = f"<player_{player}_action_feedback>{feedback}</player_{player}_action_feedback>"
         return feedback, False
 
-    def _discard_card(
-        self, state: State, player: int, position: int
-    ) -> tuple[str, bool]:
+    def _discard_card(self, state: State, player: int, position: int) -> tuple[str, bool]:
         """Discard a card to gain a hint token."""
         hand_size = state["player_hands"].shape[1]
 
@@ -774,9 +735,7 @@ class HanabiEnv(MultiTurnEnv):
         # update hand (and hint information)
         for i in range(position, hand_size - 1):
             state["player_hands"][player, i] = state["player_hands"][player, i + 1]
-            state["colors_revealed"][player, i] = state["colors_revealed"][
-                player, i + 1
-            ]
+            state["colors_revealed"][player, i] = state["colors_revealed"][player, i + 1]
             state["ranks_revealed"][player, i] = state["ranks_revealed"][player, i + 1]
 
         # draw new card if deck not empty
@@ -784,18 +743,14 @@ class HanabiEnv(MultiTurnEnv):
         if deck_has_cards:
             for deck_idx in range(state["deck"].shape[0]):
                 if np.sum(state["deck"][deck_idx]) > 0:
-                    state["player_hands"][player, hand_size - 1] = state["deck"][
-                        deck_idx
-                    ]
+                    state["player_hands"][player, hand_size - 1] = state["deck"][deck_idx]
                     state["deck"][deck_idx] = np.zeros((NUM_COLORS, NUM_RANKS))
                     break
             # check if deck just became exhausted after drawing
             self._check_deck_exhausted(state)
         else:
             # empty deck, set last position to empty
-            state["player_hands"][player, hand_size - 1] = np.zeros(
-                (NUM_COLORS, NUM_RANKS)
-            )
+            state["player_hands"][player, hand_size - 1] = np.zeros((NUM_COLORS, NUM_RANKS))
 
         # reset hint information for the new card (either drawn or empty slot)
         state["colors_revealed"][player, hand_size - 1] = np.zeros(NUM_COLORS)
@@ -803,9 +758,7 @@ class HanabiEnv(MultiTurnEnv):
 
         return feedback, False
 
-    def _give_hint(
-        self, state: State, player: int, target_player: int, hint_value: str
-    ) -> tuple[str, bool]:
+    def _give_hint(self, state: State, player: int, target_player: int, hint_value: str) -> tuple[str, bool]:
         """Give a hint to another player about their cards."""
         if state["info_tokens"] <= 0:
             feedback = f"<player_{player}_action_feedback>Player {player} could not give hint: no info tokens available.</player_{player}_action_feedback>"
