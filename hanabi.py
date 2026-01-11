@@ -19,9 +19,15 @@ class HanabiEnv(StatefulToolEnv):
         num_train_examples: int = 2000,
         num_eval_examples: int = 20,
         num_players: int = 2,
-        max_turns: int = -1,
+        max_turns: int = 100,
         **kwargs,
     ):
+        assert num_players > 1, "Number of players must be greater than 1"
+        assert max_turns > 0, (
+            "max_turns must be positive. Invalid actions (e.g., multiple tool calls, "
+            "validation errors) don't modify game state and could cause infinite loops. "
+            "A typical Hanabi game takes 50-60 turns; 100 provides buffer for errors."
+        )
         self.num_train_examples = num_train_examples
         self.num_eval_examples = num_eval_examples
         self.num_players = num_players
@@ -345,10 +351,8 @@ def load_environment(
     num_train_examples: int = 2000,
     num_eval_examples: int = 20,
     num_players: int = 2,
-    max_turns: int = -1,
+    max_turns: int = 100,
 ) -> vf.Environment:
-    assert num_players > 1, "Number of players must be greater than 1"
-
     return HanabiEnv(
         num_train_examples=num_train_examples,
         num_eval_examples=num_eval_examples,
