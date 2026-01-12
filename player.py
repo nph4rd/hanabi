@@ -20,10 +20,16 @@ class Player:
         self.env = env
         self.system_prompt = SYSTEM_PROMPT.format(player_id=player_id)
 
-    async def take_turn(self, state: State, observation: str, action_fn) -> str:
+    async def take_turn(self, state: State, observation: str, action_fn, game_over: bool = False) -> str:
         """
         Get player's action and execute it.
         Returns the action feedback string.
+
+        Args:
+            state: Current game state.
+            observation: The observation string to show the player.
+            action_fn: Function to execute actions.
+            game_over: If True, don't execute actions (game already ended).
         """
         player_messages = state["player_messages"][self.player_id]
 
@@ -74,8 +80,9 @@ class Player:
         if response is not None:
             completion_messages = await parse_response_messages(response, self.env.message_type)
             tokens = await parse_response_tokens(response, self.env.message_type, self.env.max_seq_len)
+            prompt_messages = player_messages[:-1]
             trajectory_step = TrajectoryStep(
-                prompt=player_messages[:-1],
+                prompt=prompt_messages,
                 completion=completion_messages,
                 response=response,
                 tokens=tokens,
@@ -86,13 +93,26 @@ class Player:
             )
             state["trajectory"].append(trajectory_step)
 
+        # Game already over - tool just responds with that info
+        if game_over:
+            if tool_calls_to_store:
+                for tc in tool_calls_to_store:
+                    player_messages.append(
+                        {"role": "tool", "content": "Game has ended.", "tool_call_id": tc.get("id", "")}
+                    )
+            return "Game has ended."
+
         # End game if no tool calls (match player 0's behavior)
         if not tool_calls_to_store:
             state["is_complete"] = True
-            return "Game ended: player made no action."
+            return "Made no action. Game ended."
 
         # Execute action
         player_feedback, tool_responses = self.execute_action(tool_calls_to_store, state, action_fn)
+
+        # Tool response shows only the action result
+        for tr in tool_responses:
+            tr["content"] = player_feedback
 
         # Add tool responses to player's message history
         for tr in tool_responses:
@@ -110,7 +130,7 @@ class Player:
 
         if len(action_calls) > 1:
             # Multiple actions: reject all, skip turn
-            feedback = "Error: Only one action per turn allowed. Turn skipped."
+            feedback = "Attempted multiple actions. Only one action per turn allowed. Turn skipped."
             for tc in tool_calls:
                 tool_responses.append(
                     {
@@ -127,7 +147,7 @@ class Player:
                 tool_args = {}
 
             if not tool_args:
-                feedback = "Error: Could not parse action."
+                feedback = "Submitted an invalid action that could not be parsed."
             else:
                 feedback = action_fn(
                     action_type=tool_args.get("action_type", ""),
@@ -140,7 +160,7 @@ class Player:
             tool_responses.append({"role": "tool", "content": feedback, "tool_call_id": tc.get("id", "")})
         else:
             # No action calls
-            feedback = "Error: No action taken."
+            feedback = "Did not take any action."
             # Still need to respond to any tool calls that were made
             for tc in tool_calls:
                 tool_responses.append(
@@ -172,11 +192,11 @@ class Player:
         num_players = len(state["hands"])
 
         if position < 0 or position >= hand_size:
-            return f"Invalid position {position}. Must be 0-{hand_size - 1}."
+            return f"Tried to play invalid position {position}. Must be 0-{hand_size - 1}."
 
         card = hand[position]
         if card is None:
-            return f"Position {position} has no card."
+            return f"Tried to play position {position} which has no card."
 
         color_idx, rank_idx = card
         color = CONFIG.colors[color_idx]
@@ -200,7 +220,7 @@ class Player:
             state["discard_pile"].append(card)
 
             expected = current_firework_level + 1
-            feedback = f"Player {self.player_id} played {card_to_str(card)}, but {color} needs {expected}. Lost 1 life."
+            feedback = f"Played {card_to_str(card)}, but {color} needs {expected}. Lost 1 life."
 
             if state["life_tokens"] <= 0:
                 state["is_complete"] = True
@@ -241,19 +261,19 @@ class Player:
         num_players = len(state["hands"])
 
         if position < 0 or position >= hand_size:
-            return f"Invalid position {position}. Must be 0-{hand_size - 1}."
+            return f"Tried to discard invalid position {position}. Must be 0-{hand_size - 1}."
 
         if state["info_tokens"] >= CONFIG.max_info_tokens:
-            return f"Cannot discard: already at {CONFIG.max_info_tokens} info tokens."
+            return f"Tried to discard but already at {CONFIG.max_info_tokens} info tokens."
 
         card = hand[position]
         if card is None:
-            return f"Position {position} has no card."
+            return f"Tried to discard position {position} which has no card."
 
         state["discard_pile"].append(card)
         state["info_tokens"] += 1
 
-        feedback = f"Player {self.player_id} discarded {card_to_str(card)}. Gained 1 info token."
+        feedback = f"Discarded {card_to_str(card)}. Gained 1 info token."
 
         # Shift hand and draw new card
         for i in range(position, hand_size - 1):
@@ -287,14 +307,14 @@ class Player:
             Feedback message describing the action result.
         """
         if state["info_tokens"] <= 0:
-            return "Cannot give hint: no info tokens available."
+            return "Tried to give hint but no info tokens available."
 
         num_players = len(state["hands"])
         if target_player < 0 or target_player >= num_players:
-            return f"Invalid target player {target_player}. Must be 0-{num_players - 1}."
+            return f"Tried to hint invalid target player {target_player}. Must be 0-{num_players - 1}."
 
         if target_player == self.player_id:
-            return "Cannot give hint to yourself."
+            return "Tried to give hint to themselves."
 
         target_hand = state["hands"][target_player]
         matching_cards = []
@@ -312,7 +332,7 @@ class Player:
                 rank_idx = hint_number - 1
 
                 if rank_idx < 0 or rank_idx >= CONFIG.num_ranks:
-                    return f"Invalid rank {hint_number}. Must be 1-5."
+                    return f"Tried to hint invalid rank {hint_number}. Must be 1-5."
 
                 for card_idx, card in enumerate(target_hand):
                     if card is not None and card[1] == rank_idx:
@@ -320,13 +340,11 @@ class Player:
                         state["ranks_revealed"][target_player][card_idx] = hint_number
                 hint_type = str(hint_number)
             except ValueError:
-                return f"Invalid hint value '{hint_value}'. Must be a color (R/Y/G/W/B) or rank (1-5)."
+                return f"Tried to hint invalid value '{hint_value}'. Must be a color (R/Y/G/W/B) or rank (1-5)."
 
         if not matching_cards:
-            return f"Player {target_player} has no {hint_type} cards."
+            return f"Tried to hint {hint_type} to Player {target_player}, but they have no {hint_type} cards."
 
         state["info_tokens"] -= 1
         positions_str = ", ".join(str(p) for p in matching_cards)
-        return (
-            f"Player {self.player_id} gave hint to Player {target_player}: {hint_type} at positions [{positions_str}]"
-        )
+        return f"Gave hint to Player {target_player}: {hint_type} at positions [{positions_str}]"

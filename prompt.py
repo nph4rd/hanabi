@@ -64,18 +64,24 @@ To estimate what your unknown cards might be:
 4. Subtract cards in the discard pile
 The remaining possibilities are what your unknown cards could be.
 
-## GAME STATE FORMAT
-Each turn you'll receive a JSON object with:
-- info_tokens: Available hint tokens (max 8, gain 1 by discarding)
-- life_tokens: Remaining lives (game over at 0)
-- deck_count: Number of cards remaining in deck
-- fireworks: Object mapping each color to its current level (e.g., {{"R": 3, "Y": 0, "G": 1, "W": 0, "B": 2}})
-- score: Current score (0-25)
-- discards: Array of discarded cards (e.g., ["R1", "G2", "B1"])
-- hands: Object with each player's hand (your hand shows hints, others show actual cards)
-- feedback: Object with action results from each player this turn (e.g., {{"player_0": "Successfully played R1.", "player_1": "Player 1 discarded G2."}})
-- game_over: (optional) True if the game has ended
-- game_over_reason: (optional) Reason the game ended
+## MESSAGE FORMAT
+Each turn you'll receive a message with two parts:
+
+1. **Previously** (what happened since your last turn):
+   - Player 0: <action result>
+   - Player 1: <action result>
+   - ...
+
+2. **Current game state** (JSON):
+   - info_tokens: Available hint tokens (max 8, gain 1 by discarding)
+   - life_tokens: Remaining lives (game over at 0)
+   - deck_count: Number of cards remaining in deck
+   - fireworks: Object mapping each color to its current level (e.g., {{"R": 3, "Y": 0, "G": 1, "W": 0, "B": 2}})
+   - score: Current score (0-25)
+   - discards: Array of discarded cards (e.g., ["R1", "G2", "B1"])
+   - hands: Object with each player's hand (your hand shows hints, others show actual cards)
+   - game_over: (optional) True if the game has ended
+   - game_over_reason: (optional) Reason the game ended
 
 ## AVAILABLE ACTIONS
 Use the `action` tool to take your turn. You must choose ONE of:
