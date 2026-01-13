@@ -19,7 +19,7 @@
   - Perfect score: 25 points
   - Actions: Play a card, discard for a hint token, or give a color/rank hint
 
-The game ends when all fireworks are completed (25 points), all lives are lost, or the deck runs out.
+The game ends when all fireworks are completed (25 points), all lives are lost, the deck runs out, or the maximum number of turns is reached.
 
 ### Dependencies
 - `verifiers>=0.1.8`
