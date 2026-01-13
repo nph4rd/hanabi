@@ -1,5 +1,12 @@
-num_examples = 1
-rollouts_per_example = 1
+num_examples = 100
+rollouts_per_example = 3
+
+[client]
+base_url = ["https://api.pinference.ai/api/v1/"]
+api_key_var = "PINFERENCE_API_KEY"
+
+[model]
+name = "x-ai/grok-4-fast"
 
 [[env]]
 id = "nph4rd/hanabi"
