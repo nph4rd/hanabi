@@ -1,4 +1,4 @@
-max_steps = 20
+max_steps = 50
 
 [ckpt] # Checkpoint at the end of training
 
@@ -7,9 +7,4 @@ name = "PrimeIntellect/Qwen3-1.7B"
 
 [data]
 name = "nph4rd/hanabi"
-seq_len = 1024
-batch_size = 64
-micro-batch-size = 1
-
-[optim]
-lr = 1e-5
+seq_len = 8192
