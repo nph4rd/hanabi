@@ -3,7 +3,7 @@ max_steps = 50
 [ckpt] # Checkpoint at the end of training
 
 [model]
-name = "PrimeIntellect/Qwen3-1.7B"
+name = "Qwen/Qwen3-4B-Instruct-2507"
 
 [data]
 name = "nph4rd/hanabi"
