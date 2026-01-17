@@ -4,33 +4,29 @@ trainer_gpu_ids = [6,7]
 max_steps = 100
 
 [wandb]
-project = "hanabi"
-name = "hanabi"
+project = "hanabi-rl"
+name = "hanabi-rl"
 
 [ckpt] # Checkpoint at the end of training
 
 [model]
-name = "nph4rd/Qwen3-1.7B-Hanabi-SFT"
+name = "nph4rd/Qwen3-4B-Instruct-2507-Hanabi-SFT"
 
 [orchestrator]
 seq_len = 8192
-batch_size = 256
+batch_size = 512
 rollouts_per_example = 16
 trajectory_strategy = "branching"
 
 [[orchestrator.env]]
 id = "nph4rd/hanabi"
 name = "hanabi"
-args = {"num_players" = 2, max_turns = 20}
 
 [orchestrator.sampling]
-max_tokens = 512
+max_tokens = 256
 
 [trainer] # Default trainer config
 
-[inference]
-gpu_memory_utilization = 0.8
-
 [inference.parallel]
-dp = 3
-tp = 2
+dp = 6
+tp = 1
