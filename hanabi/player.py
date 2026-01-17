@@ -146,6 +146,10 @@ class Player:
             except json.JSONDecodeError:
                 tool_args = {}
 
+            # Handle malformed tool_args (e.g., model outputs a string instead of dict)
+            if not isinstance(tool_args, dict):
+                tool_args = {}
+
             if not tool_args:
                 feedback = "Submitted an invalid action that could not be parsed."
             else:
