@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 from typing import Any, Literal, cast
@@ -265,7 +266,11 @@ class HanabiEnv(StatefulToolEnv):
             return f"Attempted unknown action type '{action_type}'."
 
     async def env_response(self, messages: Messages, state: State, **kwargs) -> Messages:
-        """Process environment response for all players' turns."""
+        """Process environment response for all players' turns.
+
+        Uses concurrent execution for game-over notifications to avoid blocking
+        the main training loop with sequential API calls.
+        """
         last_msg = cast(dict, messages[-1])
         tool_calls = list(last_msg.get("tool_calls", []))
 
@@ -293,75 +298,70 @@ class HanabiEnv(StatefulToolEnv):
             state["is_complete"] = True
             game_over_reason = "Max turns reached"
 
-        # Run other players' turns
-        for player_id in range(1, self.num_players):
-            player = self.players[player_id]
-            state["current_player"] = player_id
+        # If game is already over after player 0, notify all other players concurrently
+        if game_over_reason:
+            await self._notify_players_game_over_concurrent(
+                state, game_over_reason, current_turn_feedback, range(1, self.num_players)
+            )
+        else:
+            # Run other players' turns sequentially (game logic requires this)
+            for player_id in range(1, self.num_players):
+                player = self.players[player_id]
+                state["current_player"] = player_id
 
-            # Build feedback context for this player in chronological order
-            prev_feedback: list[tuple[int, str]] = state.get("previous_turn_feedback", [])
-            context_feedback = prev_feedback[player_id:] + current_turn_feedback
+                # Build feedback context for this player in chronological order
+                prev_feedback: list[tuple[int, str]] = state.get("previous_turn_feedback", [])
+                context_feedback = prev_feedback[player_id:] + current_turn_feedback
 
-            if game_over_reason:
-                # Game already ended - show this player the final state
-                game_over_obs = self.get_observation(
-                    state, player_id, context_feedback, game_over=True, game_over_reason=game_over_reason
-                )
-                await player.take_turn(state, game_over_obs, self.action, game_over=True)
-                state.setdefault("_players_saw_game_over", set()).add(player_id)
-            elif is_hand_empty(state, player_id):
-                # Player has no cards - check if this triggers final round end
-                if check_final_round(state):
-                    game_over_reason = "Final round complete"
-                    game_over_obs = self.get_observation(
-                        state, player_id, context_feedback, game_over=True, game_over_reason=game_over_reason
+                if game_over_reason:
+                    # Game ended during this round - notify remaining players concurrently
+                    remaining_players = range(player_id, self.num_players)
+                    await self._notify_players_game_over_concurrent(
+                        state, game_over_reason, current_turn_feedback, remaining_players
                     )
-                    await player.take_turn(state, game_over_obs, self.action, game_over=True)
-                    state.setdefault("_players_saw_game_over", set()).add(player_id)
-                # else: skip this player (no cards, game continues)
-            else:
-                # Normal turn - player takes action
-                context_obs = self.get_observation(state, player_id, context_feedback)
-                player_feedback = await player.take_turn(state, context_obs, self.action)
-                current_turn_feedback.append((player_id, player_feedback))
+                    break
+                elif is_hand_empty(state, player_id):
+                    # Player has no cards - check if this triggers final round end
+                    if check_final_round(state):
+                        game_over_reason = "Final round complete"
+                        # Notify this player and remaining players concurrently
+                        remaining_players = range(player_id, self.num_players)
+                        await self._notify_players_game_over_concurrent(
+                            state, game_over_reason, current_turn_feedback, remaining_players
+                        )
+                        break
+                    # else: skip this player (no cards, game continues)
+                else:
+                    # Normal turn - player takes action with timeout protection
+                    context_obs = self.get_observation(state, player_id, context_feedback)
+                    try:
+                        player_feedback = await asyncio.wait_for(
+                            player.take_turn(state, context_obs, self.action),
+                            timeout=60.0,  # 60 second timeout per player
+                        )
+                    except asyncio.TimeoutError:
+                        player_feedback = "Player timed out. Turn skipped."
+                    current_turn_feedback.append((player_id, player_feedback))
 
-                # Check if this player's action ended the game
-                if state.get("is_complete"):
-                    game_over_reason = "Game complete"
-                elif check_final_round(state):
-                    game_over_reason = "Final round complete"
+                    # Check if this player's action ended the game
+                    if state.get("is_complete"):
+                        game_over_reason = "Game complete"
+                    elif check_final_round(state):
+                        game_over_reason = "Final round complete"
 
         # Check if all hands empty (after all players have acted)
         if not game_over_reason and all(is_hand_empty(state, p.player_id) for p in self.players):
             state["is_complete"] = True
             game_over_reason = "All cards played"
 
-        # If game ended mid-round, show game over to players who missed it
+        # If game ended mid-round, notify players who missed it (concurrently)
         if game_over_reason:
             players_who_saw_game_over = state.get("_players_saw_game_over", set())
-
-            for player_id in range(1, self.num_players):
-                if player_id not in players_who_saw_game_over:
-                    player = self.players[player_id]
-                    # Find if/where this player acted in current_turn_feedback
-                    player_action_idx = None
-                    for idx, (pid, _) in enumerate(current_turn_feedback):
-                        if pid == player_id:
-                            player_action_idx = idx
-                            break
-
-                    if player_action_idx is not None:
-                        # Player already acted - show their action and everything after
-                        context_feedback = current_turn_feedback[player_action_idx:]
-                    else:
-                        # Player didn't act - show them all feedback
-                        prev_feedback: list[tuple[int, str]] = state.get("previous_turn_feedback", [])
-                        context_feedback = prev_feedback[player_id:] + current_turn_feedback
-
-                    game_over_obs = self.get_observation(
-                        state, player_id, context_feedback, game_over=True, game_over_reason=game_over_reason
-                    )
-                    await player.take_turn(state, game_over_obs, self.action, game_over=True)
+            players_to_notify = [pid for pid in range(1, self.num_players) if pid not in players_who_saw_game_over]
+            if players_to_notify:
+                await self._notify_players_game_over_concurrent(
+                    state, game_over_reason, current_turn_feedback, players_to_notify
+                )
 
         # Build response for player 0
         tool_messages = [
@@ -384,6 +384,54 @@ class HanabiEnv(StatefulToolEnv):
             user_message = {"role": "user", "content": self.get_observation(state, 0, current_turn_feedback)}
 
         return cast(Messages, tool_messages + [user_message])
+
+    async def _notify_players_game_over_concurrent(
+        self,
+        state: State,
+        game_over_reason: str,
+        current_turn_feedback: list[tuple[int, str]],
+        player_ids: range | list[int],
+    ) -> None:
+        """Notify multiple players of game over concurrently.
+
+        This is safe to parallelize because game-over notifications don't
+        modify game state - players just see the final state.
+        """
+
+        async def notify_player(player_id: int) -> None:
+            player = self.players[player_id]
+
+            # Find if/where this player acted in current_turn_feedback
+            player_action_idx = None
+            for idx, (pid, _) in enumerate(current_turn_feedback):
+                if pid == player_id:
+                    player_action_idx = idx
+                    break
+
+            if player_action_idx is not None:
+                # Player already acted - show their action and everything after
+                context_feedback = current_turn_feedback[player_action_idx:]
+            else:
+                # Player didn't act - show them all feedback
+                prev_feedback: list[tuple[int, str]] = state.get("previous_turn_feedback", [])
+                context_feedback = prev_feedback[player_id:] + current_turn_feedback
+
+            game_over_obs = self.get_observation(
+                state, player_id, context_feedback, game_over=True, game_over_reason=game_over_reason
+            )
+
+            try:
+                await asyncio.wait_for(
+                    player.take_turn(state, game_over_obs, self.action, game_over=True),
+                    timeout=30.0,  # 30 second timeout for game-over notifications
+                )
+            except asyncio.TimeoutError:
+                pass  # Timeout on game-over notification is acceptable
+
+            state.setdefault("_players_saw_game_over", set()).add(player_id)
+
+        # Run all notifications concurrently
+        await asyncio.gather(*[notify_player(pid) for pid in player_ids], return_exceptions=True)
 
 
 def points_reward_func(completion: Messages, **kwargs) -> float:
