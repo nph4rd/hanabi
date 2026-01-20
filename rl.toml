@@ -1,34 +1,33 @@
-inference_gpu_ids = [0,1,2,3,4,5]
-trainer_gpu_ids = [6,7]
 
-max_steps = 5
-seq_len = 8192
+inference_gpu_ids = [0,1]
+trainer_gpu_ids = [2,3,4,5,6,7]
+
+max_steps = 100
+seq_len = 16384
+
+[ckpt] # Checkpoint at the end of training
+
+[model]
+name = "nph4rd/Qwen3-4B-Instruct-2507-Hanabi-SFT"
 
 [wandb]
 project = "hanabi-rl"
 name = "hanabi-rl"
 
-[ckpt]
-
-[model]
-name = "nph4rd/Qwen3-4B-Instruct-2507-Hanabi-SFT"
+[trainer]
 
 [orchestrator]
-batch_size = 512
+batch_size = 64
 rollouts_per_example = 16
 trajectory_strategy = "branching"
-max_concurrent = 128
+
+[orchestrator.sampling]
+max_tokens = 128
 
 [[orchestrator.env]]
 id = "nph4rd/hanabi"
 name = "hanabi"
 
-[orchestrator.sampling]
-max_tokens = 256
-
-[trainer]
-
 [inference.model]
 enable_auto_tool_choice = true
 tool_call_parser = "hermes"
-
