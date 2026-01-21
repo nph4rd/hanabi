@@ -1,0 +1,20 @@
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 10
+trajectory_strategy = "branching"
+batch_size = 64
+rollouts_per_example = 16
+
+[wandb]
+project = "hanabi-rl"
+name = "hanabi-rl"
+entity = "arturomf94-stele"
+
+[sampling]
+max_tokens = 128
+
+[[env]]
+id = "nph4rd/hanabi"
+
+[inference.model]
+enable_auto_tool_choice = true
+tool_call_parser = "hermes"
