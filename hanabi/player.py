@@ -1,11 +1,7 @@
 import json
 from typing import Any
 
-from verifiers.types import State, TrajectoryStep
-from verifiers.utils.response_utils import (
-    parse_response_messages,
-    parse_response_tokens,
-)
+from verifiers.types import State
 
 from .config import CONFIG
 from .prompt import SYSTEM_PROMPT
@@ -40,13 +36,16 @@ class Player:
         # Add observation
         player_messages.append({"role": "user", "content": observation})
 
-        # Get response
-        response = await state["client"].chat.completions.create(
-            model=state["model"],
-            messages=player_messages,
-            tools=self.env.oai_tools or None,
-            **(state.get("sampling_args") or {}),
+        # Get response using the framework's method (handles logprobs, token extraction)
+        response = await self.env.get_model_response(
+            state=state,
+            prompt=player_messages,
+            oai_tools=self.env.oai_tools,
         )
+
+        # Record trajectory with proper token data for training
+        prompt_messages = list(player_messages)  # Copy before appending assistant message
+        await self.env.add_model_response(state, prompt_messages, response)
 
         # Parse response into tool_calls format
         tool_calls_to_store = []
@@ -75,23 +74,6 @@ class Player:
                 )
             else:
                 player_messages.append({"role": "assistant", "content": choice.message.content or ""})
-
-        # Record trajectory
-        if response is not None:
-            completion_messages = await parse_response_messages(response, self.env.message_type)
-            tokens = await parse_response_tokens(response, self.env.message_type, self.env.max_seq_len)
-            prompt_messages = player_messages[:-1]
-            trajectory_step = TrajectoryStep(
-                prompt=prompt_messages,
-                completion=completion_messages,
-                response=response,
-                tokens=tokens,
-                reward=None,
-                advantage=None,
-                is_truncated=False,
-                extras={"player_id": self.player_id},
-            )
-            state["trajectory"].append(trajectory_step)
 
         # Game already over - tool just responds with that info
         if game_over:
