@@ -3,18 +3,21 @@ from typing import Any
 
 from verifiers.types import State
 
-from .config import CONFIG
-from .prompt import SYSTEM_PROMPT
+from .config import CONFIG, GameConfig
+from .prompt import generate_system_prompt
 from .utils import card_to_str, check_deck_exhausted
 
 
 class Player:
     """Represents a player in the Hanabi game."""
 
-    def __init__(self, player_id: int, env: Any = None):
+    def __init__(self, player_id: int, env: Any = None, config: GameConfig | None = None):
         self.player_id = player_id
         self.env = env
-        self.system_prompt = SYSTEM_PROMPT.format(player_id=player_id)
+        self.config = config if config is not None else CONFIG
+        # Generate dynamic system prompt based on config
+        num_players = env.num_players if env and hasattr(env, "num_players") else 2
+        self.system_prompt = generate_system_prompt(self.config, player_id=player_id, num_players=num_players)
 
     async def take_turn(self, state: State, observation: str, action_fn, game_over: bool = False) -> str:
         """
@@ -185,20 +188,20 @@ class Player:
             return f"Tried to play position {position} which has no card."
 
         color_idx, rank_idx = card
-        color = CONFIG.colors[color_idx]
-        rank = rank_idx + 1
+        color = self.config.colors[color_idx]
+        rank = self.config.ranks[rank_idx]
         current_firework_level = state["fireworks"][color]
 
         if current_firework_level + 1 == rank:
             state["fireworks"][color] = rank
             state["score"] += 1
-            feedback = f"Successfully played {card_to_str(card)}."
+            feedback = f"Successfully played {card_to_str(card, self.config)}."
 
-            if rank == 5 and state["info_tokens"] < CONFIG.max_info_tokens:
+            if rank == self.config.max_rank and state["info_tokens"] < self.config.max_info_tokens:
                 state["info_tokens"] += 1
                 feedback += f" [+1 info token for completing {color}]"
 
-            if state["score"] == 25:
+            if state["score"] == self.config.max_score:
                 state["is_complete"] = True
                 feedback += "\n\nPerfect Game! All fireworks completed!"
         else:
@@ -206,7 +209,7 @@ class Player:
             state["discard_pile"].append(card)
 
             expected = current_firework_level + 1
-            feedback = f"Played {card_to_str(card)}, but {color} needs {expected}. Lost 1 life."
+            feedback = f"Played {card_to_str(card, self.config)}, but {color} needs {expected}. Lost 1 life."
 
             if state["life_tokens"] <= 0:
                 state["is_complete"] = True
@@ -249,8 +252,8 @@ class Player:
         if position < 0 or position >= hand_size:
             return f"Tried to discard invalid position {position}. Must be 0-{hand_size - 1}."
 
-        if state["info_tokens"] >= CONFIG.max_info_tokens:
-            return f"Tried to discard but already at {CONFIG.max_info_tokens} info tokens."
+        if state["info_tokens"] >= self.config.max_info_tokens:
+            return f"Tried to discard but already at {self.config.max_info_tokens} info tokens."
 
         card = hand[position]
         if card is None:
@@ -259,7 +262,7 @@ class Player:
         state["discard_pile"].append(card)
         state["info_tokens"] += 1
 
-        feedback = f"Discarded {card_to_str(card)}. Gained 1 info token."
+        feedback = f"Discarded {card_to_str(card, self.config)}. Gained 1 info token."
 
         # Shift hand and draw new card
         for i in range(position, hand_size - 1):
@@ -305,8 +308,8 @@ class Player:
         target_hand = state["hands"][target_player]
         matching_cards = []
 
-        if hint_value in CONFIG.colors:
-            color_idx = CONFIG.colors.index(hint_value)
+        if hint_value in self.config.colors:
+            color_idx = self.config.colors.index(hint_value)
             for card_idx, card in enumerate(target_hand):
                 if card is not None and card[0] == color_idx:
                     matching_cards.append(card_idx)
@@ -315,18 +318,21 @@ class Player:
         else:
             try:
                 hint_number = int(hint_value)
-                rank_idx = hint_number - 1
+                # Check if this rank exists in our config
+                if hint_number not in self.config.ranks:
+                    valid_ranks = "-".join(str(r) for r in [min(self.config.ranks), max(self.config.ranks)])
+                    return f"Tried to hint invalid rank {hint_number}. Must be {valid_ranks}."
 
-                if rank_idx < 0 or rank_idx >= CONFIG.num_ranks:
-                    return f"Tried to hint invalid rank {hint_number}. Must be 1-5."
-
+                rank_idx = self.config.ranks.index(hint_number)
                 for card_idx, card in enumerate(target_hand):
                     if card is not None and card[1] == rank_idx:
                         matching_cards.append(card_idx)
                         state["ranks_revealed"][target_player][card_idx] = hint_number
                 hint_type = str(hint_number)
             except ValueError:
-                return f"Tried to hint invalid value '{hint_value}'. Must be a color (R/Y/G/W/B) or rank (1-5)."
+                valid_colors = "/".join(self.config.colors)
+                valid_ranks = "-".join(str(r) for r in [min(self.config.ranks), max(self.config.ranks)])
+                return f"Tried to hint invalid value '{hint_value}'. Must be a color ({valid_colors}) or rank ({valid_ranks})."
 
         if not matching_cards:
             return f"Tried to hint {hint_type} to Player {target_player}, but they have no {hint_type} cards."

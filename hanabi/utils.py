@@ -1,23 +1,31 @@
 """Utility functions for Hanabi game logic."""
 
+from typing import TYPE_CHECKING
+
 from verifiers.types import State
 
 from .config import CONFIG
 
+if TYPE_CHECKING:
+    from .config import GameConfig
 
-def card_to_str(card: tuple[int, int] | None) -> str:
+
+def card_to_str(card: tuple[int, int] | None, config: "GameConfig | None" = None) -> str:
     """Convert a card tuple to a human-readable string (e.g., 'R1', 'G5').
 
     Args:
         card: Tuple of (color_idx, rank_idx) or None for empty slot.
+        config: Game configuration (uses default if not provided).
 
     Returns:
         Card string like 'R1' or '--' for empty slots.
     """
     if card is None:
         return "--"
+    if config is None:
+        config = CONFIG
     color_idx, rank_idx = card
-    return f"{CONFIG.colors[color_idx]}{CONFIG.ranks[rank_idx]}"
+    return f"{config.colors[color_idx]}{config.ranks[rank_idx]}"
 
 
 def check_deck_exhausted(state: State, num_players: int) -> None:

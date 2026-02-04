@@ -7,9 +7,9 @@ from datasets import Dataset
 from verifiers.envs.stateful_tool_env import StatefulToolEnv
 from verifiers.types import Messages, State
 
-from .config import CONFIG
+from .config import CONFIG, GameConfig
 from .player import Player
-from .prompt import SYSTEM_PROMPT
+from .prompt import generate_system_prompt
 from .utils import card_to_str, check_final_round, is_hand_empty
 
 
@@ -20,6 +20,9 @@ class HanabiEnv(StatefulToolEnv):
         num_eval_examples: int = 20,
         num_players: int = 2,
         max_turns: int = 100,
+        colors: tuple[str, ...] | None = None,
+        ranks: int | None = None,
+        hand_size: int | None = None,
         **kwargs,
     ):
         assert num_players > 1, "Number of players must be greater than 1"
@@ -28,10 +31,36 @@ class HanabiEnv(StatefulToolEnv):
             "validation errors) don't modify game state and could cause infinite loops. "
             "A typical Hanabi game takes 50-60 turns; 100 provides buffer for errors."
         )
+
+        # Create game config (validates colors/ranks/hand_size)
+        # Convert lists to tuples (JSON passes arrays as lists)
+        # Use default hand_size based on player count if not specified
+        default_hand_size = 5 if num_players <= 3 else 4
+        effective_hand_size = hand_size if hand_size is not None else default_hand_size
+
+        # Convert ranks integer to tuple (e.g., 3 -> (1, 2, 3))
+        effective_ranks = tuple(range(1, ranks + 1)) if ranks is not None else CONFIG.ranks
+
+        # Always create config to ensure hand_size matches player count
+        self.config = GameConfig(
+            colors=tuple(colors) if colors is not None else CONFIG.colors,
+            ranks=effective_ranks,
+            hand_size=effective_hand_size,
+        )
+
         self.num_train_examples = num_train_examples
         self.num_eval_examples = num_eval_examples
         self.num_players = num_players
         self.max_rounds = max_turns  # original max_turns should be interpreted as max number of rounds
+
+        # Validate deck is large enough for the game
+        cards_needed = num_players * self.config.hand_size
+        if self.config.deck_size < cards_needed:
+            raise ValueError(
+                f"Deck too small for {num_players} players with hand size {self.config.hand_size}. "
+                f"Need {cards_needed} cards to deal, but deck only has {self.config.deck_size} cards. "
+                f"Try adding more colors/ranks or reducing hand_size."
+            )
 
         # Build train dataset (seeds 0 to num_train_examples-1)
         train_dataset = Dataset.from_list(
@@ -46,18 +75,21 @@ class HanabiEnv(StatefulToolEnv):
             ]
         )
 
+        # Generate dynamic system prompt based on config
+        system_prompt = generate_system_prompt(self.config, player_id=0, num_players=num_players)
+
         super().__init__(
             dataset=train_dataset,
             eval_dataset=eval_dataset,
             max_turns=max_turns * num_players,  # scale by number of players
-            system_prompt=SYSTEM_PROMPT.format(player_id=0),
+            system_prompt=system_prompt,
             **kwargs,
         )
 
         self.add_tool(self.action, args_to_skip=["game_state", "player_id"])
 
-        # Create players after super().__init__ and add_tool so env.oai_tools etc. are available
-        self.players = [Player(i, self) for i in range(num_players)]
+        # Create players with config after super().__init__ and add_tool so env.oai_tools etc. are available
+        self.players = [Player(i, self, self.config) for i in range(num_players)]
 
     def _get_initial_observation(self, seed: int) -> str:
         """Generate the initial game observation for a given seed.
@@ -78,24 +110,28 @@ class HanabiEnv(StatefulToolEnv):
         The seed ensures reproducible games for training and evaluation.
         """
         random.seed(seed)
+        config = self.config
 
         # Build and shuffle deck as list of (color_idx, rank_idx) tuples
-        deck: list[tuple[int, int]] = [(c, n - 1) for c in range(CONFIG.num_colors) for n in CONFIG.card_distribution]
+        # card_distribution contains the actual rank values, convert to 0-indexed
+        assert config.card_distribution is not None
+        deck: list[tuple[int, int]] = [
+            (c, config.ranks.index(r)) for c in range(config.num_colors) for r in config.card_distribution
+        ]
         random.shuffle(deck)
 
         # Deal hands
-        hand_size = 5 if self.num_players <= 3 else 4
         hands: list[list[tuple[int, int] | None]] = []
         for _ in range(self.num_players):
-            hand: list[tuple[int, int] | None] = [deck.pop() for _ in range(hand_size)]
+            hand: list[tuple[int, int] | None] = [deck.pop() for _ in range(config.hand_size)]
             hands.append(hand)
 
         # Fireworks: track highest completed rank per color (0 = none started)
-        fireworks: dict[str, int] = {color: 0 for color in CONFIG.colors}
+        fireworks: dict[str, int] = {color: 0 for color in config.colors}
 
         # Revealed info: track known color/rank per card position
-        colors_revealed: list[list[str | None]] = [[None] * hand_size for _ in range(self.num_players)]
-        ranks_revealed: list[list[int | None]] = [[None] * hand_size for _ in range(self.num_players)]
+        colors_revealed: list[list[str | None]] = [[None] * config.hand_size for _ in range(self.num_players)]
+        ranks_revealed: list[list[int | None]] = [[None] * config.hand_size for _ in range(self.num_players)]
 
         return cast(
             State,
@@ -103,8 +139,8 @@ class HanabiEnv(StatefulToolEnv):
                 "deck": deck,
                 "hands": hands,
                 "fireworks": fireworks,
-                "info_tokens": CONFIG.max_info_tokens,
-                "life_tokens": CONFIG.max_life_tokens,
+                "info_tokens": config.max_info_tokens,
+                "life_tokens": config.max_life_tokens,
                 "discard_pile": [],
                 "colors_revealed": colors_revealed,
                 "ranks_revealed": ranks_revealed,
@@ -149,7 +185,7 @@ class HanabiEnv(StatefulToolEnv):
         num_players = len(state["hands"])
         for player_idx in range(num_players):
             if player_idx != player_id:
-                cards = [card_to_str(card) for card in state["hands"][player_idx]]
+                cards = [card_to_str(card, self.config) for card in state["hands"][player_idx]]
                 hands[f"player_{player_idx}"] = cards
 
         game_state: dict = {
@@ -158,7 +194,7 @@ class HanabiEnv(StatefulToolEnv):
             "deck_count": len(state["deck"]),
             "fireworks": state["fireworks"],
             "score": state["score"],
-            "discards": [card_to_str(card) for card in state["discard_pile"]],
+            "discards": [card_to_str(card, self.config) for card in state["discard_pile"]],
             "hands": hands,
         }
 
@@ -413,11 +449,42 @@ def load_environment(
     num_eval_examples: int = 20,
     num_players: int = 2,
     max_turns: int = 100,
+    colors: tuple[str, ...] | None = None,
+    ranks: int | None = None,
+    hand_size: int | None = None,
 ) -> vf.Environment:
+    """Load the Hanabi environment with optional custom configuration.
+
+    Args:
+        num_train_examples: Number of training examples to generate.
+        num_eval_examples: Number of evaluation examples to generate.
+        num_players: Number of players in the game (must be > 1).
+        max_turns: Maximum number of rounds before game ends.
+        colors: Tuple of color codes to use. Must be a subset of ("R", "Y", "G", "W", "B").
+                Defaults to all 5 colors.
+        ranks: Maximum rank (2-5). Creates ranks 1 through this number. Defaults to 5.
+        hand_size: Number of cards per player's hand. Defaults to 5 for 2-3 players, 4 for 4+ players.
+
+    Returns:
+        Configured HanabiEnv instance.
+
+    Examples:
+        # Default 5-color, 5-rank game
+        env = load_environment()
+
+        # Simplified 2-color, 3-rank game for faster iteration
+        env = load_environment(colors=("R", "Y"), ranks=3)
+
+        # Minimal game: 2 colors, 2 ranks, 2-card hands
+        env = load_environment(colors=("R", "Y"), ranks=2, hand_size=2)
+    """
     return HanabiEnv(
         num_train_examples=num_train_examples,
         num_eval_examples=num_eval_examples,
         num_players=num_players,
         max_turns=max_turns,
+        colors=colors,
+        ranks=ranks,
+        hand_size=hand_size,
         rubric=vf.Rubric(funcs=[points_reward_func]),
     )
