@@ -626,7 +626,7 @@ wheels = [
 
 [[package]]
 name = "hanabi"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "verifiers" },
@@ -639,7 +639,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=eb3bae36c93b2f574e13a39da2908609d4ec4b2f" }]
+requires-dist = [{ name = "verifiers", git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=209774a" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1422,7 +1422,7 @@ wheels = [
 
 [[package]]
 name = "prime-sandboxes"
-version = "0.2.7"
+version = "0.2.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -1430,9 +1430,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/b6/5acc211831acd3670f2d8d02bb8f75c2ff47999958393b1005bf250821d8/prime_sandboxes-0.2.7.tar.gz", hash = "sha256:1bd6f70a5be14ac1366ee96d0c3bb2a80521fdeeee7bca8453a95140bcac0e25", size = 45095, upload-time = "2025-12-19T11:53:10.539Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/aa/e6f8e67aa0dc712e84f2c0280cb167e385b6527416405c74a67151e08e2e/prime_sandboxes-0.2.14.tar.gz", hash = "sha256:fbdfc80b1b00e16d2c7448d735f2080b42a51672cd8c6e937b44668348b3d640", size = 47506, upload-time = "2026-02-01T08:24:41.288Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/11/bf9f7732a0ed6ef9665cbd5d6ff4f074ee0032e2ba0e4574ee8a65a97efa/prime_sandboxes-0.2.7-py3-none-any.whl", hash = "sha256:ac32e0d78d9655378548b627f9cdffd68d8116c36f596297ad7224d920f219b2", size = 18310, upload-time = "2025-12-19T11:53:09.627Z" },
+    { url = "https://files.pythonhosted.org/packages/69/4c/9289d7e06e9307b0476287234576013703e09e12a76d402b1e827f1b3dd4/prime_sandboxes-0.2.14-py3-none-any.whl", hash = "sha256:9ca2067c0d1e970ee71e2be9f0be53fe0ef6c87c54fcb24ba1ef71374a173d08", size = 20820, upload-time = "2026-02-01T08:24:39.822Z" },
 ]
 
 [[package]]
@@ -2222,12 +2222,13 @@ wheels = [
 
 [[package]]
 name = "verifiers"
-version = "0.1.8.post2"
-source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=eb3bae36c93b2f574e13a39da2908609d4ec4b2f#eb3bae36c93b2f574e13a39da2908609d4ec4b2f" }
+version = "0.1.9.post3"
+source = { git = "https://github.com/PrimeIntellect-ai/verifiers.git?rev=209774a#209774a22b6915eeff2091a1ce2782ecbe580ae7" }
 dependencies = [
     { name = "datasets" },
     { name = "jinja2" },
     { name = "math-verify" },
+    { name = "mcp" },
     { name = "nest-asyncio" },
     { name = "openai" },
     { name = "openai-agents" },
