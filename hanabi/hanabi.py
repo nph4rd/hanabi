@@ -23,6 +23,7 @@ class HanabiEnv(StatefulToolEnv):
         colors: tuple[str, ...] | None = None,
         ranks: int | None = None,
         hand_size: int | None = None,
+        thinking: bool = False,
         **kwargs,
     ):
         assert num_players > 1, "Number of players must be greater than 1"
@@ -52,6 +53,7 @@ class HanabiEnv(StatefulToolEnv):
         self.num_eval_examples = num_eval_examples
         self.num_players = num_players
         self.max_rounds = max_turns  # original max_turns should be interpreted as max number of rounds
+        self.thinking = thinking
 
         # Validate deck is large enough for the game
         cards_needed = num_players * self.config.hand_size
@@ -76,7 +78,7 @@ class HanabiEnv(StatefulToolEnv):
         )
 
         # Generate dynamic system prompt based on config
-        system_prompt = generate_system_prompt(self.config, player_id=0, num_players=num_players)
+        system_prompt = generate_system_prompt(self.config, player_id=0, num_players=num_players, thinking=thinking)
 
         super().__init__(
             dataset=train_dataset,
@@ -89,7 +91,7 @@ class HanabiEnv(StatefulToolEnv):
         self.add_tool(self.action, args_to_skip=["game_state", "player_id"])
 
         # Create players with config after super().__init__ and add_tool so env.oai_tools etc. are available
-        self.players = [Player(i, self, self.config) for i in range(num_players)]
+        self.players = [Player(i, self, self.config, thinking) for i in range(num_players)]
 
     def _get_initial_observation(self, seed: int) -> str:
         """Generate the initial game observation for a given seed.
@@ -452,6 +454,7 @@ def load_environment(
     colors: tuple[str, ...] | None = None,
     ranks: int | None = None,
     hand_size: int | None = None,
+    thinking: bool = False,
 ) -> vf.Environment:
     """Load the Hanabi environment with optional custom configuration.
 
@@ -464,6 +467,7 @@ def load_environment(
                 Defaults to all 5 colors.
         ranks: Maximum rank (2-5). Creates ranks 1 through this number. Defaults to 5.
         hand_size: Number of cards per player's hand. Defaults to 5 for 2-3 players, 4 for 4+ players.
+        thinking: If True, prompts model to think step-by-step before acting.
 
     Returns:
         Configured HanabiEnv instance.
@@ -477,6 +481,9 @@ def load_environment(
 
         # Minimal game: 2 colors, 2 ranks, 2-card hands
         env = load_environment(colors=("R", "Y"), ranks=2, hand_size=2)
+
+        # With thinking enabled
+        env = load_environment(thinking=True)
     """
     return HanabiEnv(
         num_train_examples=num_train_examples,
@@ -486,5 +493,6 @@ def load_environment(
         colors=colors,
         ranks=ranks,
         hand_size=hand_size,
+        thinking=thinking,
         rubric=vf.Rubric(funcs=[points_reward_func]),
     )

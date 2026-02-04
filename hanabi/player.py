@@ -11,13 +11,16 @@ from .utils import card_to_str, check_deck_exhausted
 class Player:
     """Represents a player in the Hanabi game."""
 
-    def __init__(self, player_id: int, env: Any = None, config: GameConfig | None = None):
+    def __init__(self, player_id: int, env: Any = None, config: GameConfig | None = None, thinking: bool = False):
         self.player_id = player_id
         self.env = env
         self.config = config if config is not None else CONFIG
+        self.thinking = thinking
         # Generate dynamic system prompt based on config
         num_players = env.num_players if env and hasattr(env, "num_players") else 2
-        self.system_prompt = generate_system_prompt(self.config, player_id=player_id, num_players=num_players)
+        self.system_prompt = generate_system_prompt(
+            self.config, player_id=player_id, num_players=num_players, thinking=thinking
+        )
 
     async def take_turn(self, state: State, observation: str, action_fn, game_over: bool = False) -> str:
         """

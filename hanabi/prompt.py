@@ -15,13 +15,14 @@ COLOR_NAMES = {
 }
 
 
-def generate_system_prompt(config: "GameConfig", player_id: int, num_players: int = 2) -> str:
+def generate_system_prompt(config: "GameConfig", player_id: int, num_players: int = 2, thinking: bool = False) -> str:
     """Generate dynamic system prompt based on game configuration.
 
     Args:
         config: Game configuration with colors, ranks, hand_size, etc.
         player_id: ID of the player this prompt is for.
         num_players: Total number of players in the game.
+        thinking: If True, prompt asks for step-by-step thinking before acting.
 
     Returns:
         Formatted system prompt string.
@@ -74,6 +75,12 @@ def generate_system_prompt(config: "GameConfig", player_id: int, num_players: in
     # Valid colors/ranks for hint examples
     valid_colors = "/".join(config.colors)
     valid_ranks = "/".join(f'"{r}"' for r in config.ranks)
+
+    # Response instruction based on thinking mode
+    if thinking:
+        thinking_instruction = "\n\nThink step-by-step about the current game state and what action would be best before using the action tool."
+    else:
+        thinking_instruction = ""
 
     return f"""You are playing Hanabi, a cooperative card game where players work together to build fireworks.
 
@@ -167,9 +174,7 @@ Use the `action` tool to take your turn. You must choose ONE of:
    - Costs 1 info token
    - Cannot hint yourself
 
-You can only take ONE action per turn.
-
-Think carefully and then respond with your chosen action.
+You can only take ONE action per turn.{thinking_instruction}
 
 You are player {player_id}.
 """
